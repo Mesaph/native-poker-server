@@ -3,7 +3,7 @@ import { server as WebSocketServer } from 'websocket';
 import winston from 'winston';
 
 import configuration from './configuration';
-import createMessageHandler from './createMessageHandler';
+import createMessageHandler from './messageHandler';
 
 const server = http.createServer(() => {});
 

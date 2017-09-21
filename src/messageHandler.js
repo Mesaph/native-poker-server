@@ -1,6 +1,6 @@
 import winston from 'winston';
 import * as messageTypes from './messageTypes';
-import createConnectionManager from './createConnectionManager';
+import createConnectionManager from './connectionManager';
 
 
 const createMessageHandler = () => {
