@@ -1,4 +1,4 @@
 export default {
-    "port": 8080,
-    "wsProtocol": "native-poker",
+  port: 8080,
+  wsProtocol: 'native-poker',
 };
