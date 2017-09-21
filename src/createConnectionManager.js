@@ -1,143 +1,19 @@
 import winston from 'winston';
+import createSessionManager from './sessionManager';
 
-let sessionCounter = 0;
-let storyCounter = 0;
-const isSet = value => Boolean(value) || value === 0 || value === false;
-
-const createStoryEstimation = () => {
-  const clientToEstimationMapping = new Map();
-
-  let lockEstimation = false;
-
-  const storyEstimation = {
-    id: storyCounter++,
-
-  };
-  storyEstimation.vote = (clientName, estimation) => {
-    if (!lockEstimation) {
-      clientToEstimationMapping.set(clientName, parseFloat(estimation));
-    }
-  };
-
-  storyEstimation.evaluate = () => {
-    lockEstimation = true;
-    let minClientName;
-    let minEstimation;
-    let maxClientName;
-    let maxEstimation;
-    let estimationSum = 0;
-
-    clientToEstimationMapping.forEach((estimation, clientName) => {
-      if (!isSet(minEstimation) || estimation < minEstimation) {
-        minClientName = clientName;
-        minEstimation = estimation;
-      }
-      if (!isSet(maxEstimation) || estimation > maxEstimation) {
-        maxClientName = clientName;
-        maxEstimation = estimation;
-      }
-      estimationSum += estimation;
-    });
-
-    return {
-      minEstimation: {
-        clientName: minClientName,
-        value: minEstimation,
-      },
-      maxEstimation: {
-        clientName: maxClientName,
-        value: maxEstimation,
-      },
-      averageEstimation: estimationSum / storyEstimation.getNumberOfVotes(),
-    };
-  };
-
-  storyEstimation.getNumberOfVotes = () => clientToEstimationMapping.size;
-
-
-  return storyEstimation;
+const broadcastToSession = (session, sendMessage, excludeSessionHost) => {
+  if (!session || !sendMessage) {
+    return;
+  }
+  const sessionConnections = session.clients.map(client => client.connection);
+  if (!excludeSessionHost) {
+    sessionConnections.push(session.hostConnection);
+  }
+  sessionConnections.forEach(connection => sendMessage(connection));
 };
 
 
-const createSession = (hostConnection, name) => {
-  const session = {
-    id: sessionCounter++,
-    name,
-    isRunning: false,
-    hostConnection,
-    clients: [],
-    estimations: [],
-  };
-
-  session.createNextStoryEstimation = () => {
-    session.estimations.push(createStoryEstimation());
-  };
-
-  session.getCurrentEstimation = () => session.estimations[session.estimations.length - 1];
-
-  session.getClientNameByConnection = clientConnection => session.clients.find(client => client.connection === clientConnection).name;
-
-  session.voteCurrentEstimation = (clientConnection, estimation) => {
-    winston.log('info', "session.voteCurrentEstimation ", estimation);
-    const clientName = session.getClientNameByConnection(clientConnection);
-    // TODO unique client name :/
-    const currentEstimation = session.getCurrentEstimation();
-    if (!currentEstimation) {
-      return false;
-    }
-
-    winston.log('info', "vote  ", {clientName, estimation});
-
-    currentEstimation.vote(clientName, estimation);
-    let isLastVote = session.clients.length === currentEstimation.getNumberOfVotes();
-    if (isLastVote) {
-      isLastVote = currentEstimation.evaluate();
-    }
-    return isLastVote;
-  };
-
-  return session;
-};
-
-
-const createSessionManager = () => {
-  let sessions = [];
-  const sessionManager = {};
-
-  sessionManager.createSession = (hostConnection, name) => {
-    const session = createSession(hostConnection, name);
-    sessions.push(session);
-    return session;
-  };
-
-  sessionManager.findSessionByConnection = connection =>
-    sessions.find(session => session.hostConnection === connection ||
-            session.clients.some(client => client.connection === connection));
-
-  sessionManager.findSessionById = id =>
-    sessions.find(session => session.id === id);
-
-
-  sessionManager.getAvailableSessions = () => sessions;
-
-  sessionManager.closeSession = (sessionToClose) => {
-    sessions = sessions.filter(session => session.id !== sessionToClose.id);
-  };
-
-  sessionManager.getAllConnections = () => {
-    let connections = [];
-    sessions.forEach((session) => {
-      const sessionConnections = [session.hostConnection, ...session.clients.map(client => client.connection)];
-      connections = connections.concat(sessionConnections);
-    });
-    return connections;
-  };
-
-  return sessionManager;
-};
-
-
-const createConnectionManager = function (messageHandler) {
+const createConnectionManager = (messageHandler) => {
   const sessionManager = createSessionManager();
   let allConnections = [];
 
@@ -159,6 +35,7 @@ const createConnectionManager = function (messageHandler) {
       }
     });
   };
+
   connectionManager.createSession = (connection, sessionName) => {
     const session = sessionManager.createSession(connection, sessionName);
     messageHandler.sendSessionCreated(connection, session.id);
@@ -166,18 +43,15 @@ const createConnectionManager = function (messageHandler) {
   };
 
   const broadcastSessionUpdate = (session) => {
-    if (!session) {
-      return;
-    }
     const clientNames = session.clients.map(client => client.name);
-    session.clients.map(client => client.connection)
-      .concat(session.hostConnection)
-      .forEach((connection) => {
-        messageHandler.sendSessionUpdate(connection, {
-          id: session.id,
-          clientNames,
-        });
-      });
+    broadcastToSession(
+      session,
+      connection => messageHandler.sendSessionUpdate(connection, {
+        id: session.id,
+        clientNames,
+      }),
+      false,
+    );
   };
 
   connectionManager.connectToSession = (connection, sessionId, name) => {
@@ -200,7 +74,7 @@ const createConnectionManager = function (messageHandler) {
   };
 
   connectionManager.closeConnection = (connection) => {
-    winston.log('info', "closeConnection");
+    winston.log('info', 'closeConnection');
     allConnections = allConnections.filter(otherConnection => otherConnection !== connection);
 
     const session = sessionManager.findSessionByConnection(connection);
@@ -210,30 +84,22 @@ const createConnectionManager = function (messageHandler) {
 
     const isHost = session.hostConnection === connection;
     if (isHost) {
-      winston.log('info', "Host left session, closing session", session.name);
+      winston.log('info', 'Host left session, closing session', session.name);
       sessionManager.closeSession(session);
       broadcastAvailableSessions(connection);
     } else {
       const client = session.clients.find(sessionClient => sessionClient.connection === connection);
-      winston.log('info', "client" +client.name+ " left session "+session.name);
+      winston.log('info', `client ${client.name} left session ${session.name}`);
       session.clients = session.clients
-        .filter(client => (client.connection !== connection));
+        .filter(otherClients => (otherClients.connection !== connection));
 
       if (session.clients.length === 0) {
-        winston.log('info', "No client left, closing session" +session.name);
+        winston.log('info', `No client left, closing session${session.name}`);
         sessionManager.closeSession(session);
       } else {
         broadcastSessionUpdate(session);
       }
     }
-  };
-
-  const broadcastSessionStart = (session) => {
-    session.clients.map(client => client.connection)
-      .concat(session.hostConnection)
-      .forEach((connection) => {
-        messageHandler.sendStartSession(connection);
-      });
   };
 
   connectionManager.startSession = (connection) => {
@@ -245,30 +111,26 @@ const createConnectionManager = function (messageHandler) {
 
     session.createNextStoryEstimation();
     session.isRunning = true;
-    broadcastSessionStart(session);
+    broadcastToSession(session, messageHandler.sendStartSession, false);
     // broadcastAvailableSessions(connection);
-  };
-
-
-  const broadcastVoteProgress = (session, progress) => {
-    messageHandler.updateVoteProgress();
-
-    session.clients.map(client => client.connection)
-      .concat(session.hostConnection)
-      .forEach((connection) => {
-        messageHandler.updateVoteProgress(connection, progress);
-      });
   };
 
   connectionManager.vote = (connection, estimation) => {
     const session = sessionManager.findSessionByConnection(connection);
 
     if (!session) {
-      winston.log('info', "vote: no session found");
+      winston.log('info', 'vote: no session found');
       return;
     }
+
     const voteEvaluation = session.voteCurrentEstimation(connection, estimation);
-    broadcastVoteProgress(session, session.getCurrentEstimation().getNumberOfVotes());
+    broadcastToSession(
+      session,
+      connection => messageHandler.updateVoteProgress(connection,
+        session.getCurrentEstimation().getNumberOfVotes()),
+      false,
+    );
+
     if (voteEvaluation) {
       messageHandler.voteFinished(session.hostConnection, voteEvaluation);
     }

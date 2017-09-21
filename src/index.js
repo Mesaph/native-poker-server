@@ -1,11 +1,11 @@
 import http from 'http';
 import { server as WebSocketServer } from 'websocket';
-import configuration from './configuration';
 import winston from 'winston';
 
+import configuration from './configuration';
 import createMessageHandler from './createMessageHandler';
 
-const server = http.createServer((request, response) => {});
+const server = http.createServer(() => {});
 
 server.listen(configuration.port, () => {
   winston.log('info', `Server is listening on port ${configuration.port}`);

@@ -1,10 +1,6 @@
-/**
- * @author: Christoph Ersfeld, Senacor Technologies AG
- */
-
+import winston from 'winston';
 import * as messageTypes from './messageTypes';
 import createConnectionManager from './createConnectionManager';
-import winston from 'winston';
 
 
 const createMessageHandler = () => {
