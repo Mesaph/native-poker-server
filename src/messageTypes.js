@@ -12,7 +12,6 @@ export const UPDATE_SESSION = "UPDATE_SESSION";
 
 export const START = "START";
 export const VOTE = "VOTE";
-
 export const VOTE_FINSHED = "VOTE_FINSHED";
-
+export const UPDATE_VOTE_PROGRESS = "UPDATE_VOTE_PROGRESS";
 

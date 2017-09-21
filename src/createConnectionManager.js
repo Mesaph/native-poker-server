@@ -239,6 +239,7 @@ const createConnectionManager = function (messageHandler) {
 
     const broadcastSessionStart = (session) => {
         session.clients.map(client => client.connection)
+            .concat(session.hostConnection)
             .forEach(connection => {
                 messageHandler.sendStartSession(connection);
             });
@@ -257,6 +258,17 @@ const createConnectionManager = function (messageHandler) {
         //broadcastAvailableSessions(connection);
     };
 
+
+    const broadcastVoteProgress = (session, progress) => {
+        messageHandler.updateVoteProgress()
+
+        session.clients.map(client => client.connection)
+            .concat(session.hostConnection)
+            .forEach(connection => {
+                messageHandler.updateVoteProgress(connection, progress);
+            });
+    }
+
     connectionManager.vote = (connection, estimation) => {
         const session = sessionManager.findSessionByConnection(connection);
 
@@ -265,6 +277,7 @@ const createConnectionManager = function (messageHandler) {
             return;
         }
         const voteEvaluation = session.voteCurrentEstimation(connection, estimation);
+        broadcastVoteProgress(session, session.getCurrentEstimation().getNumberOfVotes());
         if(voteEvaluation){
             messageHandler.voteFinished(session.hostConnection, voteEvaluation);
         }

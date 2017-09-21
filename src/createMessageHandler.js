@@ -44,7 +44,11 @@ const createMessageHandler = () => {
 
     messageHandler.voteFinished = (connection, voteEvaluation) => {
         sendMessage(connection, messageTypes.VOTE_FINSHED, voteEvaluation);
-    }
+    };
+
+    messageHandler.updateVoteProgress = (connection, progress) => {
+        sendMessage(connection, messageTypes.UPDATE_VOTE_PROGRESS, progress);
+    };
 
     messageHandler.handleIncomingMessage = (connection, incomingMessage)=> {
         const messageObject = parseMessage(incomingMessage);
